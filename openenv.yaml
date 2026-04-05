@@ -1,0 +1,94 @@
+name: negotiation-env
+version: "1.0.0"
+description: >
+  Strategic Negotiation Simulation Environment where an AI agent learns
+  to negotiate under uncertainty with different opponent personalities.
+  The agent must maximize profit through multi-round price negotiation
+  while adapting to greedy, fair, or impatient opponents.
+
+author: Team MEta_ai
+license: Apache-2.0
+
+environment:
+  type: simulation
+  domain: negotiation
+  real_world_task: automated marketplace pricing and negotiation
+
+observation_space:
+  type: object
+  fields:
+    current_offer:
+      type: integer
+      description: Current price on the table
+      range: [100, 1000]
+    round:
+      type: integer
+      description: Current round number
+      range: [0, 20]
+    max_rounds:
+      type: integer
+      description: Maximum allowed rounds
+    role:
+      type: string
+      enum: ["buyer", "seller"]
+      description: Agent's role in the negotiation
+    last_opponent_action:
+      type: string
+      enum: ["START", "OFFER", "ACCEPT"]
+      description: Opponent's last action
+    last_opponent_offer:
+      type: integer
+      description: Opponent's last offered price
+      range: [100, 1000]
+    history:
+      type: array
+      description: History of all actions this episode
+
+action_space:
+  type: object
+  fields:
+    action_type:
+      type: string
+      enum: ["OFFER", "ACCEPT", "REJECT"]
+      description: Type of negotiation action
+    price:
+      type: integer
+      description: Price for OFFER actions (ignored for ACCEPT/REJECT)
+      range: [100, 1000]
+
+reward:
+  type: float
+  range: [-50.0, 855.0]
+  description: >
+    Reward based on deal profit scaled by time factor.
+    Partial progress signals during intermediate steps.
+    Penalty for failed negotiations (-50), bad deals (-20), 
+    and aggressive offers (cumulative -2 per aggressive step).
+
+tasks:
+  - name: task_a_easy
+    difficulty: easy
+    description: Fair opponent, wide ZOPA, 20 rounds
+    success_threshold: 0.2
+
+  - name: task_b_medium
+    difficulty: medium
+    description: Greedy opponent, narrow ZOPA, 15 rounds
+    success_threshold: 0.3
+
+  - name: task_c_hard
+    difficulty: hard
+    description: Impatient opponent, tight margins, 6 rounds
+    success_threshold: 0.4
+
+inference:
+  script: inference.py
+  env_vars:
+    - API_BASE_URL
+    - MODEL_NAME
+    - HF_TOKEN
+
+deployment:
+  dockerfile: Dockerfile
+  platform: huggingface-spaces
+  tag: openenv

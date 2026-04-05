@@ -1,0 +1,45 @@
+﻿==================================================
+TEST 1: Multi-round negotiation
+==================================================
+Initial offer: 1000
+  R1: OFFER 650 -> Opp ACCEPT 650 | reward=133.00 done=True
+  >>> Deal: opponent_accepted, price=650
+  History entries: 1
+
+==================================================
+TEST 2: Value-based clamping
+==================================================
+  PASS: Seller never offered below own value (100 trials x 20 rounds)
+
+==================================================
+TEST 3: Cumulative aggression penalty
+==================================================
+  R1: penalty_so_far=2.0
+  R2: penalty_so_far=4.0
+  R3: penalty_so_far=6.0
+  R4: penalty_so_far=8.0
+  R5: penalty_so_far=10.0
+  Expected cumulative penalty: 10.0, Actual: 10.0
+  PASS
+
+==================================================
+TEST 4: Task configs and graders
+==================================================
+  task_a_easy (easy): score=0.125, success=False
+  task_b_medium (medium): score=0.25, success=False
+  task_c_hard (hard): score=0.4167, success=True
+
+==================================================
+TEST 5: state() method
+==================================================
+  PASS: state() returns Observation with role=buyer, round=0
+
+==================================================
+TEST 6: ACCEPT and REJECT
+==================================================
+  ACCEPT: reward=0.00 done=True deal_type=None
+  REJECT: reward=-50.00 done=True deal_type=agent_rejected
+
+==================================================
+ALL TESTS COMPLETE
+==================================================
