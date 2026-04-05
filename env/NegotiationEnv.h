@@ -1,17 +1,21 @@
 #pragma once
 #include "State.h"
 #include "Action.h"
+#include "../opponent/OpponentStrategy.h"
 #include <tuple>
 #include <string>
+#include <memory>
 
 class NegotiationEnv {
 private:
     State state;
-    
-    // Hidden (internal)
     int agent_value;
     int opponent_value;
-    std::string opponent_type; // "greedy", "fair", "impatient"
+    std::string opponent_type;
+    
+    std::unique_ptr<OpponentStrategy> opponent_strategy;
+
+    double compute_reward(int deal_price);
 
 public:
     NegotiationEnv();
