@@ -71,23 +71,35 @@ def run_task(client, model_name: str, task_config):
 
             target_goal = "buy for as low as possible (below your maximum value)" if obs.role == "buyer" else "sell for as high as possible (above your minimum value)"
 
-            prompt = f"""You are negotiating as a {obs.role}. Your goal is to {target_goal} to maximize profit.
+            prompt = f"""You are an expert negotiator acting as a {obs.role}. Your objective is to {target_goal} and maximize your profit through strategic multi-round bargaining.
 
-State:
-* Your PRIVATE Valuation: {obs.agent_value} (DO NOT accept or offer a deal worse than this!)
+CURRENT STATE:
+* Your PRIVATE Valuation: {obs.agent_value} (your absolute limit — NEVER go past this)
 * Current offer on the table: {obs.current_offer}
 * Round: {step_n} of {obs.max_rounds}
 * Opponent's last action: {obs.last_opponent_action}
 * Opponent's last offer: {obs.last_opponent_offer}
 
-{history_text}CRITICAL RULE: NEVER make an OFFER that is worse than your private valuation. For example, if you are a buyer with a valuation of 500, never offer >500.
+{history_text}YOUR NEGOTIATION PLAYBOOK:
+
+ROUND-BY-ROUND STRATEGY (you are a {obs.role}):
+{"- Round 1: Start AGGRESSIVE. Offer around 30-35% of the opponent's opening price. (e.g., if they open at 1000, offer 300-350). This anchors the negotiation in your favor." if obs.role == "buyer" else "- Round 1: Start AGGRESSIVE. Offer around 2-3x your minimum value. This anchors the negotiation in your favor."}
+- Round 2-3: Concede SLOWLY. Increase your offer by only 50-80 per round. Watch how the opponent responds.
+- Round 3-4: If the opponent's counter-offer is profitable for you ({"below" if obs.role == "buyer" else "above"} your valuation), ACCEPT it. Otherwise make one final offer near the midpoint.
+- Round 5+: You are running out of time. ACCEPT any profitable deal immediately.
+
+SCORING RULES:
+1. PROFIT MATTERS MOST: Your score = (your profit) × (time bonus). A great deal on round 3 beats a mediocre deal on round 1.
+2. TIME BONUS: Decreases each round. Don't drag past round 5.
+3. AGGRESSION PENALTY: Offers extremely far from reasonable (e.g., offering 100 when market is 500+) are penalized. Stay within a plausible range.
+4. NEVER REJECT unless it's the absolute last round and you cannot profit.
 
 Choose exactly ONE action:
-* OFFER <price> — make a counter-offer (negotiate toward your private valuation)
-* ACCEPT — accept the opponent's offer (ONLY if it is profitable compared to your valuation)
-* REJECT — walk away (only if no deal is possible)
+* OFFER <price> — counter-offer (follow the round strategy above)
+* ACCEPT — accept if the opponent's offer gives you good profit
+* REJECT — walk away (almost never do this)
 
-Respond with ONLY your chosen action, nothing else."""
+Respond with ONLY your action. Example: OFFER 350"""
 
             action_str = "REJECT"
             action_price = 0
