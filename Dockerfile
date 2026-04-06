@@ -1,7 +1,5 @@
-# ── Negotiation Environment — OpenEnv Dockerfile ──
-# Person 3: Complete this Dockerfile for HuggingFace Spaces deployment
-# Requirements: Python 3.11+, pip dependencies, inference.py entrypoint
-# Constraints: CPU only, vcpu=2, memory=8gb, runtime < 20min
+# ── Strategic Negotiation Environment — OpenEnv Dockerfile ──
+# Deploys the environment as a FastAPI server on HuggingFace Spaces
 
 FROM python:3.11-slim
 
@@ -14,14 +12,17 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy project files
 COPY env_wrapper.py .
 COPY tasks.py .
+COPY app.py .
 COPY inference.py .
 COPY openenv.yaml .
 COPY README.md .
 
-# Environment variables (set at runtime, NOT hardcoded)
+# Environment variables (set at runtime via HF Spaces secrets/variables)
 # API_BASE_URL — The API endpoint for the LLM
 # MODEL_NAME   — The model identifier to use for inference
 # HF_TOKEN     — Your HuggingFace API key
 
-# Entrypoint
-CMD ["python", "inference.py"]
+EXPOSE 7860
+
+# Run the OpenEnv server (stays alive for agent connections)
+CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "7860"]
