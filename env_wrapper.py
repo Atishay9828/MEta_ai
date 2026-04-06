@@ -192,7 +192,8 @@ class EnvWrapper:
         else:
             profit = self.agent_value - deal_price
 
-        time_factor = 1.0 - (self.round / self.max_rounds)
+        # Softer time decay: sqrt penalizes less harshly in early rounds
+        time_factor = 1.0 - (self.round / self.max_rounds) ** 0.5
         base_reward = profit * time_factor
 
         # Penalty for bad deals (agent accepts a losing deal)

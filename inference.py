@@ -56,6 +56,7 @@ def run_task(client, model_name: str, task_config):
     rewards = []
     deal_made = False
     history_for_prompt = []
+    last_agent_offer = None
 
     try:
         while not done and step_n < env.max_rounds:
@@ -83,8 +84,8 @@ CURRENT STATE:
 {history_text}YOUR NEGOTIATION PLAYBOOK:
 
 ROUND-BY-ROUND STRATEGY (you are a {obs.role}):
-{"- Round 1: Start AGGRESSIVE. Offer around 30-35%% of the opponent's opening price. (e.g., if they open at 1000, offer 300-350). This anchors the negotiation in your favor." if obs.role == "buyer" else "- Round 1: Start AGGRESSIVE. Offer around 2-3x your minimum value. This anchors the negotiation in your favor."}
-- Round 2-3: Concede SLOWLY. {"Increase" if obs.role == "buyer" else "Decrease"} your offer by only 50-80 per round. Watch how the opponent responds.
+{("- Round 1: You only have " + str(obs.max_rounds) + " rounds! Start at about 60-65% of your own valuation (" + str(obs.agent_value) + ") as your first offer. Then increase quickly by 100+ each round.") if obs.max_rounds <= 8 else ("- Round 1: Start AGGRESSIVE. Offer around 30-35% of the opponent's opening price. This anchors the negotiation in your favor." if obs.role == "buyer" else "- Round 1: Start AGGRESSIVE. Offer around 2-3x your minimum value. This anchors the negotiation in your favor.")}
+- Round 2-3: Concede moderately. {"Increase" if obs.role == "buyer" else "Decrease"} your offer to find their breaking point.
 - Round 3-4: If the opponent's counter-offer is profitable for you ({"below" if obs.role == "buyer" else "above"} your valuation), ACCEPT it. Otherwise make one final offer near the midpoint.
 - Round 5+: You are running out of time. ACCEPT any profitable deal immediately.
 
@@ -149,6 +150,51 @@ Respond with ONLY your action. Example: OFFER 350"""
                 error_msg = f"API_Error: {str(e)[:50]}"
                 action_str = "REJECT"
                 action_price = 0
+
+            # ── ACCEPT guard: never accept a losing deal ──
+            if action_str == "ACCEPT":
+                opp_offer = obs.last_opponent_offer
+                if obs.role == "buyer" and opp_offer > obs.agent_value:
+                    # Opponent wants more than our max — counter instead
+                    action_str = "OFFER"
+                    action_price = last_agent_offer + 80 if last_agent_offer else int(obs.agent_value * 0.6)
+                elif obs.role == "seller" and opp_offer < obs.agent_value:
+                    action_str = "OFFER"
+                    action_price = last_agent_offer - 80 if last_agent_offer else int(obs.agent_value * 1.4)
+
+            # ── Smart offer clamping ──
+            if action_str.startswith("OFFER") and action_price > 0:
+                # Hard limit: never cross own valuation
+                if obs.role == "buyer":
+                    action_price = min(action_price, obs.agent_value - 10)
+                else:
+                    action_price = max(action_price, obs.agent_value + 10)
+
+                # Adaptive concession cap: short games need bigger steps
+                max_step = max(80, 1200 // env.max_rounds)
+                if last_agent_offer is not None:
+                    if obs.role == "buyer":
+                        action_price = min(action_price, last_agent_offer + max_step)
+                    else:
+                        action_price = max(action_price, last_agent_offer - max_step)
+
+                # Target price: aim for ~40% of the gap from agent's value
+                # This is where the best profit-vs-time tradeoff lives
+                gap = abs(obs.agent_value - obs.current_offer)
+                if obs.role == "buyer":
+                    target = obs.agent_value - int(gap * 0.4)  # aim to buy well below value
+                    # Don't let round 2+ offers go above target unless desperate (round 4+)
+                    if step_n <= 3 and last_agent_offer is not None:
+                        action_price = min(action_price, max(target, last_agent_offer + 50))
+                else:
+                    target = obs.agent_value + int(gap * 0.4)
+                    if step_n <= 3 and last_agent_offer is not None:
+                        action_price = max(action_price, min(target, last_agent_offer - 50))
+
+                action_str = f"OFFER {action_price}"
+                last_agent_offer = action_price
+            elif action_str.startswith("OFFER"):
+                last_agent_offer = action_price
 
             # ── Step the environment ──
             obs, reward, done, info = env.step(action_str, action_price)
