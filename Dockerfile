@@ -16,6 +16,7 @@ COPY env_wrapper.py .
 COPY tasks.py .
 COPY inference.py .
 COPY openenv.yaml .
+COPY README.md .
 
 # Environment variables (set at runtime, NOT hardcoded)
 # API_BASE_URL — The API endpoint for the LLM
