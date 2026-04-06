@@ -83,19 +83,21 @@ CURRENT STATE:
 {history_text}YOUR NEGOTIATION PLAYBOOK:
 
 ROUND-BY-ROUND STRATEGY (you are a {obs.role}):
-{"- Round 1: Start AGGRESSIVE. Offer around 30-35% of the opponent's opening price. (e.g., if they open at 1000, offer 300-350). This anchors the negotiation in your favor." if obs.role == "buyer" else "- Round 1: Start AGGRESSIVE. Offer around 2-3x your minimum value. This anchors the negotiation in your favor."}
-- Round 2-3: Concede SLOWLY. Increase your offer by only 50-80 per round. Watch how the opponent responds.
+{"- Round 1: Start AGGRESSIVE. Offer around 30-35%% of the opponent's opening price. (e.g., if they open at 1000, offer 300-350). This anchors the negotiation in your favor." if obs.role == "buyer" else "- Round 1: Start AGGRESSIVE. Offer around 2-3x your minimum value. This anchors the negotiation in your favor."}
+- Round 2-3: Concede SLOWLY. {"Increase" if obs.role == "buyer" else "Decrease"} your offer by only 50-80 per round. Watch how the opponent responds.
 - Round 3-4: If the opponent's counter-offer is profitable for you ({"below" if obs.role == "buyer" else "above"} your valuation), ACCEPT it. Otherwise make one final offer near the midpoint.
 - Round 5+: You are running out of time. ACCEPT any profitable deal immediately.
+
+ABSOLUTE LIMIT: {"Your offer must NEVER exceed " + str(obs.agent_value) + ". Any offer above " + str(obs.agent_value) + " loses you money!" if obs.role == "buyer" else "Your offer must NEVER go below " + str(obs.agent_value) + ". Any offer below " + str(obs.agent_value) + " loses you money!"}
 
 SCORING RULES:
 1. PROFIT MATTERS MOST: Your score = (your profit) × (time bonus). A great deal on round 3 beats a mediocre deal on round 1.
 2. TIME BONUS: Decreases each round. Don't drag past round 5.
 3. AGGRESSION PENALTY: Offers extremely far from reasonable (e.g., offering 100 when market is 500+) are penalized. Stay within a plausible range.
-4. NEVER REJECT unless it's the absolute last round and you cannot profit.
+4. NEVER REJECT — a bad deal is almost always better than no deal (rejection = -50 penalty).
 
 Choose exactly ONE action:
-* OFFER <price> — counter-offer (follow the round strategy above)
+* OFFER <price> — counter-offer ({"must be below " + str(obs.agent_value) if obs.role == "buyer" else "must be above " + str(obs.agent_value)})
 * ACCEPT — accept if the opponent's offer gives you good profit
 * REJECT — walk away (almost never do this)
 
