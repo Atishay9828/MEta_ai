@@ -2,6 +2,13 @@
 Inference Script — OpenEnv Negotiation Environment
 Runs LLM agent against all 3 tasks, produces structured logs.
 Uses OpenAI-compatible client with HuggingFace router.
+
+STDOUT format (strict — parsed by automated judges):
+  [START] task=<name> env=<benchmark> model=<model>
+  [STEP]  step=<n> action=<str> reward=<0.00> done=<true|false> error=<msg|null>
+  [END]   success=<true|false> steps=<n> rewards=<r1,r2,...,rn>
+
+All other output goes to stderr.
 """
 
 import os
@@ -50,20 +57,21 @@ def run_task(client, model_name: str, task_config):
     deal_made = False
     history_for_prompt = []
 
-    while not done and step_n < env.max_rounds:
-        step_n += 1
+    try:
+        while not done and step_n < env.max_rounds:
+            step_n += 1
 
-        # ── Build prompt with history ──
-        history_text = ""
-        if history_for_prompt:
-            history_lines = []
-            for h in history_for_prompt[-5:]:  # Last 5 rounds for context
-                history_lines.append(f"  Round {h['round']}: You → {h['agent']}, Opponent → {h['opp']}")
-            history_text = "Negotiation history:\n" + "\n".join(history_lines) + "\n\n"
+            # ── Build prompt with history ──
+            history_text = ""
+            if history_for_prompt:
+                history_lines = []
+                for h in history_for_prompt[-5:]:  # Last 5 rounds for context
+                    history_lines.append(f"  Round {h['round']}: You → {h['agent']}, Opponent → {h['opp']}")
+                history_text = "Negotiation history:\n" + "\n".join(history_lines) + "\n\n"
 
-        target_goal = "buy for as low as possible (below your maximum value)" if obs.role == "buyer" else "sell for as high as possible (above your minimum value)"
+            target_goal = "buy for as low as possible (below your maximum value)" if obs.role == "buyer" else "sell for as high as possible (above your minimum value)"
 
-        prompt = f"""You are negotiating as a {obs.role}. Your goal is to {target_goal} to maximize profit.
+            prompt = f"""You are negotiating as a {obs.role}. Your goal is to {target_goal} to maximize profit.
 
 State:
 * Your PRIVATE Valuation: {obs.agent_value} (DO NOT accept or offer a deal worse than this!)
@@ -81,79 +89,78 @@ Choose exactly ONE action:
 
 Respond with ONLY your chosen action, nothing else."""
 
-        action_str = "REJECT"
-        action_price = 0
-        error_msg = "null"
-
-        try:
-            response = client.chat.completions.create(
-                model=model_name,
-                messages=[{"role": "user", "content": prompt}],
-                max_tokens=20,
-                temperature=0.3,
-            )
-            llm_text = response.choices[0].message.content.strip()
-
-            parsed_action, parsed_price, parse_err = parse_action(llm_text)
-
-            if parsed_action:
-                action_str = parsed_action
-                action_price = parsed_price
-            else:
-                # Retry with stricter prompt
-                error_msg = f"parse failed: {parse_err}, retrying"
-                retry_response = client.chat.completions.create(
-                    model=model_name,
-                    messages=[
-                        {"role": "user", "content": prompt},
-                        {"role": "assistant", "content": llm_text},
-                        {"role": "user", "content": "Output strictly ONLY ONE of: 'OFFER <price>', 'ACCEPT', or 'REJECT'. Nothing else."},
-                    ],
-                    max_tokens=15,
-                    temperature=0.1,
-                )
-                llm_text2 = retry_response.choices[0].message.content.strip()
-                parsed2, price2, err2 = parse_action(llm_text2)
-                if parsed2:
-                    action_str = parsed2
-                    action_price = price2
-                    error_msg = "null"
-                else:
-                    action_str = "REJECT"
-                    action_price = 0
-                    error_msg = "parse error on retry, defaulting to REJECT"
-
-        except Exception as e:
-            error_msg = f"API_Error: {str(e)[:50]}"
             action_str = "REJECT"
             action_price = 0
+            error_msg = "null"
 
-        # ── Step the environment ──
-        obs, reward, done, info = env.step(action_str, action_price)
-        rewards.append(reward)
+            try:
+                response = client.chat.completions.create(
+                    model=model_name,
+                    messages=[{"role": "user", "content": prompt}],
+                    max_tokens=20,
+                    temperature=0.3,
+                )
+                llm_text = response.choices[0].message.content.strip()
 
-        # Track deal
-        if done and info.get("deal_type") in ("agent_accepted", "opponent_accepted"):
-            deal_made = True
+                parsed_action, parsed_price, parse_err = parse_action(llm_text)
 
-        # Track history for prompting
-        history_for_prompt.append({
-            "round": step_n,
-            "agent": action_str,
-            "opp": f"{obs.last_opponent_action} {obs.last_opponent_offer}" if obs.last_opponent_action == "OFFER" else obs.last_opponent_action,
-        })
+                if parsed_action:
+                    action_str = parsed_action
+                    action_price = parsed_price
+                else:
+                    # Retry with stricter prompt
+                    error_msg = f"parse failed: {parse_err}, retrying"
+                    retry_response = client.chat.completions.create(
+                        model=model_name,
+                        messages=[
+                            {"role": "user", "content": prompt},
+                            {"role": "assistant", "content": llm_text},
+                            {"role": "user", "content": "Output strictly ONLY ONE of: 'OFFER <price>', 'ACCEPT', or 'REJECT'. Nothing else."},
+                        ],
+                        max_tokens=15,
+                        temperature=0.1,
+                    )
+                    llm_text2 = retry_response.choices[0].message.content.strip()
+                    parsed2, price2, err2 = parse_action(llm_text2)
+                    if parsed2:
+                        action_str = parsed2
+                        action_price = price2
+                        error_msg = "null"
+                    else:
+                        action_str = "REJECT"
+                        action_price = 0
+                        error_msg = "parse error on retry, defaulting to REJECT"
 
-        # ── Log step ──
-        log_action = action_str if not action_str.startswith("OFFER") else f"OFFER {action_price}"
-        print(f"[STEP] step={step_n} action={log_action} reward={reward:.2f} done={str(done).lower()} error={error_msg}")
+            except Exception as e:
+                error_msg = f"API_Error: {str(e)[:50]}"
+                action_str = "REJECT"
+                action_price = 0
 
-    # ── Score ──
-    grader = get_grader(task_config)
-    result = grader.grade(rewards, step_n, deal_made)
+            # ── Step the environment ──
+            obs, reward, done, info = env.step(action_str, action_price)
+            rewards.append(reward)
 
-    rewards_str = ",".join([f"{r:.2f}" for r in rewards])
-    print(f"[END] success={str(result['success']).lower()} steps={step_n} score={result['score']:.4f} rewards={rewards_str}")
-    print()
+            # Track deal
+            if done and info.get("deal_type") in ("agent_accepted", "opponent_accepted"):
+                deal_made = True
+
+            # Track history for prompting
+            history_for_prompt.append({
+                "round": step_n,
+                "agent": action_str,
+                "opp": f"{obs.last_opponent_action} {obs.last_opponent_offer}" if obs.last_opponent_action == "OFFER" else obs.last_opponent_action,
+            })
+
+            # ── Log step (stdout — parsed by judges) ──
+            log_action = action_str if not action_str.startswith("OFFER") else f"OFFER {action_price}"
+            print(f"[STEP] step={step_n} action={log_action} reward={reward:.2f} done={str(done).lower()} error={error_msg}")
+
+    finally:
+        # [END] MUST always be printed, even on exceptions
+        grader = get_grader(task_config)
+        result = grader.grade(rewards, step_n, deal_made)
+        rewards_str = ",".join([f"{r:.2f}" for r in rewards])
+        print(f"[END] success={str(result['success']).lower()} steps={step_n} rewards={rewards_str}")
 
     return result
 
@@ -164,16 +171,18 @@ def main():
     hf_token = os.getenv("HF_TOKEN")
 
     if not hf_token:
-        print("ERROR: HF_TOKEN environment variable is not set.")
-        print("Set it with: $env:HF_TOKEN='your_token_here'")
+        print("ERROR: HF_TOKEN environment variable is not set.", file=sys.stderr)
+        print("Set it with: export HF_TOKEN='your_token_here'", file=sys.stderr)
         sys.exit(1)
 
     client = OpenAI(base_url=api_base_url, api_key=hf_token)
 
-    print("=" * 60)
-    print("NEGOTIATION ENVIRONMENT — OpenEnv Inference")
-    print("=" * 60)
-    print()
+    # Debug info goes to stderr only
+    print("=" * 60, file=sys.stderr)
+    print("NEGOTIATION ENVIRONMENT — OpenEnv Inference", file=sys.stderr)
+    print(f"Model: {model_name}", file=sys.stderr)
+    print(f"API:   {api_base_url}", file=sys.stderr)
+    print("=" * 60, file=sys.stderr)
 
     all_results = []
 
@@ -181,18 +190,19 @@ def main():
         result = run_task(client, model_name, task)
         all_results.append(result)
 
-    # ── Summary ──
-    print("=" * 60)
-    print("SUMMARY")
-    print("=" * 60)
+    # ── Summary to stderr (not parsed) ──
+    print("\n" + "=" * 60, file=sys.stderr)
+    print("SUMMARY", file=sys.stderr)
+    print("=" * 60, file=sys.stderr)
     for r in all_results:
         status = "PASS" if r["success"] else "FAIL"
         print(f"  [{status}] {r['task']} ({r['difficulty']}): score={r['score']:.4f} "
-              f"steps={r['steps']} deal={r['deal_made']} threshold={r['threshold']}")
+              f"steps={r['steps']} deal={r['deal_made']} threshold={r['threshold']}",
+              file=sys.stderr)
 
     avg_score = sum(r["score"] for r in all_results) / len(all_results)
-    print(f"\n  Average Score: {avg_score:.4f}")
-    print("=" * 60)
+    print(f"\n  Average Score: {avg_score:.4f}", file=sys.stderr)
+    print("=" * 60, file=sys.stderr)
 
 
 if __name__ == "__main__":
