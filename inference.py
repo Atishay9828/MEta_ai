@@ -49,7 +49,7 @@ def run_task(client, model_name: str, task_config):
     )
     obs = env.reset()
 
-    print(f"[START] task={task_config.name} env=negotiation model={model_name}")
+    print(f"[START] task={task_config.name} env=negotiation model={model_name}", flush=True)
 
     done = False
     step_n = 0
@@ -153,14 +153,15 @@ Respond with ONLY your chosen action, nothing else."""
 
             # ── Log step (stdout — parsed by judges) ──
             log_action = action_str if not action_str.startswith("OFFER") else f"OFFER {action_price}"
-            print(f"[STEP] step={step_n} action={log_action} reward={reward:.2f} done={str(done).lower()} error={error_msg}")
+            print(f"[STEP] step={step_n} action={log_action} reward={reward:.2f} done={str(done).lower()} error={error_msg}", flush=True)
 
     finally:
         # [END] MUST always be printed, even on exceptions
         grader = get_grader(task_config)
         result = grader.grade(rewards, step_n, deal_made)
         rewards_str = ",".join([f"{r:.2f}" for r in rewards])
-        print(f"[END] success={str(result['success']).lower()} steps={step_n} rewards={rewards_str}")
+        score = result['score']
+        print(f"[END] success={str(result['success']).lower()} steps={step_n} score={score:.4f} rewards={rewards_str}", flush=True)
 
     return result
 
