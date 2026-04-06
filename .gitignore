@@ -27,3 +27,11 @@ Thumbs.db
 *.o
 *.out
 test_sim.exe
+
+# Dev artifacts (not part of submission)
+test_output.txt
+test_env.py
+test_llm.py
+build.bat
+env/
+opponent/
