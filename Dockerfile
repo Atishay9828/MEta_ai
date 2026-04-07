@@ -1,7 +1,7 @@
 # ── Strategic Negotiation Environment — OpenEnv Dockerfile ──
 # Deploys the environment as a FastAPI server on HuggingFace Spaces
 
-FROM python:3.11
+FROM --platform=linux/amd64 python:3.10-bookworm
 
 WORKDIR /app
 
