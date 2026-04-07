@@ -1,14 +1,3 @@
----
-title: Strategic Negotiation Environment
-emoji: 🤝
-colorFrom: blue
-colorTo: purple
-sdk: docker
-tags:
-  - openenv
-pinned: false
----
-
 # Strategic Negotiation Simulation — Meta OpenEnv
 
 A reinforcement learning simulation environment developed for the Meta PyTorch OpenEnv Hackathon. This project tests an AI agent's ability to negotiate prices under conditions of partial observability and uncertainty. The environment adheres strictly to the Meta OpenEnv Gymnasium specifications.
