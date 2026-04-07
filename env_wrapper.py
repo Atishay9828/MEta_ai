@@ -81,10 +81,15 @@ class Opponent:
             return "REJECT", 0
 
         # ── Acceptance Check ──
-        if self.opponent_role == "seller" and agent_offer >= self.opponent_value:
-            self.history.append({"round": round_num, "action": "ACCEPT", "price": agent_offer})
-            return "ACCEPT", agent_offer
-        if self.opponent_role == "buyer" and agent_offer <= self.opponent_value:
+        # Opponent negotiates for a minimum number of rounds before accepting.
+        # Greedy opponents hold out longer; impatient ones settle sooner.
+        min_round_to_accept = max(2, self.patience // 3)
+
+        offer_acceptable = (
+            (self.opponent_role == "seller" and agent_offer >= self.opponent_value) or
+            (self.opponent_role == "buyer" and agent_offer <= self.opponent_value)
+        )
+        if offer_acceptable and round_num >= min_round_to_accept:
             self.history.append({"round": round_num, "action": "ACCEPT", "price": agent_offer})
             return "ACCEPT", agent_offer
 
@@ -192,8 +197,9 @@ class EnvWrapper:
         else:
             profit = self.agent_value - deal_price
 
-        # Softer time decay: sqrt penalizes less harshly in early rounds
-        time_factor = 1.0 - (self.round / self.max_rounds) ** 0.5
+        # Gentle time decay: linear, max 50% loss even if all rounds used.
+        # This rewards fast deals but doesn't destroy multi-round negotiation.
+        time_factor = 1.0 - 0.5 * (self.round / self.max_rounds)
         base_reward = profit * time_factor
 
         # Penalty for bad deals (agent accepts a losing deal)
@@ -268,7 +274,10 @@ class EnvWrapper:
             action_str = f"OFFER {action_price}"
 
             # ── CUMULATIVE AGGRESSION PENALTY ──
-            if abs(action_price - self.opponent_value) > 150:
+            # Scale threshold to ZOPA width so narrow-ZOPA tasks aren't unfairly punished
+            zopa = abs(self.agent_value - self.opponent_value)
+            aggression_threshold = max(100, int(zopa * 1.25))
+            if abs(action_price - self.opponent_value) > aggression_threshold:
                 self.cumulative_aggression_penalty += 2.0
 
         # Record this step in history

@@ -72,7 +72,7 @@ def run_task(client, model_name: str, task_config):
 
             target_goal = "buy for as low as possible (below your maximum value)" if obs.role == "buyer" else "sell for as high as possible (above your minimum value)"
 
-            prompt = f"""You are an expert negotiator acting as a {obs.role}. Your objective is to {target_goal} and maximize your profit through strategic multi-round bargaining.
+            prompt = f"""You are an expert negotiator acting as a {obs.role}. Your objective is to {target_goal} and maximize your profit.
 
 CURRENT STATE:
 * Your PRIVATE Valuation: {obs.agent_value} (your absolute limit — NEVER go past this)
@@ -81,28 +81,21 @@ CURRENT STATE:
 * Opponent's last action: {obs.last_opponent_action}
 * Opponent's last offer: {obs.last_opponent_offer}
 
-{history_text}YOUR NEGOTIATION PLAYBOOK:
+{history_text}STRATEGY:
+- Start your first offer at about 40-50% of the opening price. {"As a buyer with valuation " + str(obs.agent_value) + ", aim to pay as LITTLE as possible — profit = valuation minus price." if obs.role == "buyer" else "As a seller with valuation " + str(obs.agent_value) + ", aim to sell as HIGH as possible — profit = price minus valuation."}
+- Concede slowly each round (50-80 per round), watching the opponent move toward you.
+- If the opponent's counter is {"below" if obs.role == "buyer" else "above"} {obs.agent_value}, ACCEPT it — that's guaranteed profit!
+- Close within 3-5 rounds for best time bonus.
+- NEVER REJECT — rejection = -50 penalty.
 
-ROUND-BY-ROUND STRATEGY (you are a {obs.role}):
-{("- Round 1: You only have " + str(obs.max_rounds) + " rounds! Start at about 60-65% of your own valuation (" + str(obs.agent_value) + ") as your first offer. Then increase quickly by 100+ each round.") if obs.max_rounds <= 8 else ("- Round 1: Start AGGRESSIVE. Offer around 30-35% of the opponent's opening price. This anchors the negotiation in your favor." if obs.role == "buyer" else "- Round 1: Start AGGRESSIVE. Offer around 2-3x your minimum value. This anchors the negotiation in your favor.")}
-- Round 2-3: Concede moderately. {"Increase" if obs.role == "buyer" else "Decrease"} your offer to find their breaking point.
-- Round 3-4: If the opponent's counter-offer is profitable for you ({"below" if obs.role == "buyer" else "above"} your valuation), ACCEPT it. Otherwise make one final offer near the midpoint.
-- Round 5+: You are running out of time. ACCEPT any profitable deal immediately.
+HARD RULE: {"Your offer must be BELOW " + str(obs.agent_value) + ". Offering above it loses you money." if obs.role == "buyer" else "Your offer must be ABOVE " + str(obs.agent_value) + ". Offering below it loses you money."}
 
-ABSOLUTE LIMIT: {"Your offer must NEVER exceed " + str(obs.agent_value) + ". Any offer above " + str(obs.agent_value) + " loses you money!" if obs.role == "buyer" else "Your offer must NEVER go below " + str(obs.agent_value) + ". Any offer below " + str(obs.agent_value) + " loses you money!"}
+Choose ONE action:
+* OFFER <price>
+* ACCEPT
+* REJECT
 
-SCORING RULES:
-1. PROFIT MATTERS MOST: Your score = (your profit) × (time bonus). A great deal on round 3 beats a mediocre deal on round 1.
-2. TIME BONUS: Decreases each round. Don't drag past round 5.
-3. AGGRESSION PENALTY: Offers extremely far from reasonable (e.g., offering 100 when market is 500+) are penalized. Stay within a plausible range.
-4. NEVER REJECT — a bad deal is almost always better than no deal (rejection = -50 penalty).
-
-Choose exactly ONE action:
-* OFFER <price> — counter-offer ({"must be below " + str(obs.agent_value) if obs.role == "buyer" else "must be above " + str(obs.agent_value)})
-* ACCEPT — accept if the opponent's offer gives you good profit
-* REJECT — walk away (almost never do this)
-
-Respond with ONLY your action. Example: OFFER 350"""
+Respond with ONLY your action. Example: OFFER 450"""
 
             action_str = "REJECT"
             action_price = 0
@@ -151,49 +144,32 @@ Respond with ONLY your action. Example: OFFER 350"""
                 action_str = "REJECT"
                 action_price = 0
 
-            # ── ACCEPT guard: never accept a losing deal ──
+            # ── Safety guardrails ──
+            # ACCEPT guard: never accept a deal worse than our valuation
             if action_str == "ACCEPT":
                 opp_offer = obs.last_opponent_offer
                 if obs.role == "buyer" and opp_offer > obs.agent_value:
-                    # Opponent wants more than our max — counter instead
                     action_str = "OFFER"
-                    action_price = last_agent_offer + 80 if last_agent_offer else int(obs.agent_value * 0.6)
+                    action_price = last_agent_offer + 50 if last_agent_offer else int(obs.agent_value * 0.6)
                 elif obs.role == "seller" and opp_offer < obs.agent_value:
                     action_str = "OFFER"
-                    action_price = last_agent_offer - 80 if last_agent_offer else int(obs.agent_value * 1.4)
+                    action_price = last_agent_offer - 50 if last_agent_offer else int(obs.agent_value * 1.4)
 
-            # ── Smart offer clamping ──
+            # Valuation clamp: never offer past our own limit
             if action_str.startswith("OFFER") and action_price > 0:
-                # Hard limit: never cross own valuation
                 if obs.role == "buyer":
                     action_price = min(action_price, obs.agent_value - 10)
                 else:
                     action_price = max(action_price, obs.agent_value + 10)
 
-                # Adaptive concession cap: short games need bigger steps
-                max_step = max(80, 1200 // env.max_rounds)
+                # Concession cap: max 120 per round to prevent panic jumps
                 if last_agent_offer is not None:
                     if obs.role == "buyer":
-                        action_price = min(action_price, last_agent_offer + max_step)
+                        action_price = min(action_price, last_agent_offer + 120)
                     else:
-                        action_price = max(action_price, last_agent_offer - max_step)
-
-                # Target price: aim for ~40% of the gap from agent's value
-                # This is where the best profit-vs-time tradeoff lives
-                gap = abs(obs.agent_value - obs.current_offer)
-                if obs.role == "buyer":
-                    target = obs.agent_value - int(gap * 0.4)  # aim to buy well below value
-                    # Don't let round 2+ offers go above target unless desperate (round 4+)
-                    if step_n <= 3 and last_agent_offer is not None:
-                        action_price = min(action_price, max(target, last_agent_offer + 50))
-                else:
-                    target = obs.agent_value + int(gap * 0.4)
-                    if step_n <= 3 and last_agent_offer is not None:
-                        action_price = max(action_price, min(target, last_agent_offer - 50))
+                        action_price = max(action_price, last_agent_offer - 120)
 
                 action_str = f"OFFER {action_price}"
-                last_agent_offer = action_price
-            elif action_str.startswith("OFFER"):
                 last_agent_offer = action_price
 
             # ── Step the environment ──
