@@ -1,21 +1,23 @@
 # ── Strategic Negotiation Environment — OpenEnv Dockerfile ──
 # Deploys the environment as a FastAPI server on HuggingFace Spaces
 
-FROM python:3.11-slim
+FROM python:3.11
 
 WORKDIR /app
 
-# Install dependencies
+# Install dependencies first (layer caching)
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy project files
+# Copy all project files
 COPY env_wrapper.py .
 COPY tasks.py .
 COPY app.py .
 COPY inference.py .
 COPY openenv.yaml .
+COPY pyproject.toml .
 COPY README.md .
+COPY server/ server/
 
 # Environment variables (set at runtime via HF Spaces secrets/variables)
 # API_BASE_URL — The API endpoint for the LLM
