@@ -1,0 +1,45 @@
+# Version control
+.git
+.gitignore
+
+# Python bytecode
+__pycache__/
+*.py[cod]
+*.pyo
+*.egg-info/
+dist/
+build/
+
+# Virtual environments
+.env
+.venv/
+venv/
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# C++ artifacts (not used in Docker)
+*.exe
+*.o
+*.out
+env/
+opponent/
+tests/
+agents/
+
+# Lock file (not used by pip)
+uv.lock
+
+# Dev artifacts
+test_output.txt
+test_env.py
+test_llm.py
+build.bat
+LICENSE
